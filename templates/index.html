@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Collaborative Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+</head>
+<body class="bg-slate-900 h-screen flex overflow-hidden">
+    
+    <div class="w-80 bg-slate-800 p-6 flex flex-col gap-6 text-white shadow-xl z-10">
+        <h1 class="text-2xl font-bold text-emerald-400">Studio Pro</h1>
+        
+        <div>
+            <label class="text-xs text-slate-400 uppercase">Preset Colors</label>
+            <div class="grid grid-cols-6 gap-2 mt-2" id="colorPalette"></div>
+            <input type="color" id="colorPicker" class="w-full mt-2 h-10 rounded cursor-pointer">
+        </div>
+
+        <div>
+            <label class="text-xs text-slate-400 uppercase">Emoji Stamps</label>
+            <div class="grid grid-cols-4 gap-2 mt-2" id="emojiPalette"></div>
+        </div>
+
+        <button onclick="downloadImage()" class="bg-blue-600 hover:bg-blue-700 p-3 rounded font-bold w-full mt-auto">Export Image</button>
+        <button id="clearBtn" class="bg-red-800 hover:bg-red-900 p-3 rounded font-bold w-full">Clear Canvas</button>
+    </div>
+
+    <canvas id="whiteboard" class="flex-grow bg-white cursor-crosshair"></canvas>
+
+    <script>
+        const socket = io();
+        const canvas = document.getElementById('whiteboard');
+        const ctx = canvas.getContext('2d');
+        const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00', '#FF00FF', '#000000'];
+        const emojis = ['🌟', '🔥', '🚀', '🎨', '💻', '🎮', '💡', '✅', '🌈', '⚡', '👻', '🍕'];
+        
+        let tool = 'pencil';
+        let currentEmoji = '🌟';
+        canvas.width = window.innerWidth - 320;
+        canvas.height = window.innerHeight;
+
+        // Generate Colors UI
+        colors.forEach(c => {
+            const btn = document.createElement('button');
+            btn.style.backgroundColor = c;
+            btn.className = "w-8 h-8 rounded-full border border-white hover:scale-110 transition";
+            btn.onclick = () => document.getElementById('colorPicker').value = c;
+            document.getElementById('colorPalette').appendChild(btn);
+        });
+
+        // Generate Emojis UI
+        emojis.forEach(e => {
+            const btn = document.createElement('button');
+            btn.innerText = e;
+            btn.className = "text-2xl hover:bg-slate-600 rounded p-1 transition";
+            btn.onclick = () => { tool = 'emoji'; currentEmoji = e; };
+            document.getElementById('emojiPalette').appendChild(btn);
+        });
+
+        // Drawing Logic
+        canvas.addEventListener('mousedown', (e) => {
+            if(tool === 'emoji') {
+                ctx.font = '30px serif';
+                ctx.fillText(currentEmoji, e.offsetX, e.offsetY);
+                socket.emit('draw', { type: 'emoji', x: e.offsetX, y: e.offsetY, emoji: currentEmoji });
+            } else {
+                ctx.beginPath();
+                ctx.moveTo(e.offsetX, e.offsetY);
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (e.buttons !== 1 || tool === 'emoji') return;
+            const data = { type: 'line', x: e.offsetX, y: e.offsetY, color: document.getElementById('colorPicker').value, size: 5 };
+            drawCanvas(data);
+            socket.emit('draw', data);
+        });
+
+        function drawCanvas(d) {
+            ctx.lineWidth = d.size;
+            ctx.strokeStyle = d.color;
+            if(d.type === 'line') {
+                ctx.lineTo(d.x, d.y);
+                ctx.stroke();
+            } else {
+                ctx.font = '30px serif';
+                ctx.fillText(d.emoji, d.x, d.y);
+            }
+        }
+        
+        socket.on('draw_received', drawCanvas);
+        
+        document.getElementById('clearBtn').onclick = () => { 
+            socket.emit('clear'); 
+            ctx.clearRect(0,0,canvas.width,canvas.height); 
+        };
+        socket.on('clear_board', () => ctx.clearRect(0, 0, canvas.width, canvas.height));
+
+        function downloadImage() {
+            const link = document.createElement('a');
+            link.download = 'my-studio-art.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+    </script>
+</body>
+</html>
